@@ -1,0 +1,280 @@
+--Create Vaccination Table
+CREATE TABLE CovidVaccinations(
+iso_code CHAR,
+continent VARCHAR(50),
+locations VARCHAR(50),
+dates DATE,
+total_tests INT,
+new_tests INT,
+total_tests_per_thousand INT,
+new_tests_per_thousand INT,
+new_tests_smoothed INT,
+new_tests_smoothed_per_thousand INT,
+positive_rate INT,
+tests_per_case INT,
+tests_units VARCHAR (50),
+total_vaccinations INT,
+people_vaccinated INT,
+people_fully_vaccinated INT,
+total_boosters INT,
+new_vaccinations INT,
+new_vaccinations_smoothed INT,
+total_vaccinations_per_hundred INT,
+people_vaccinated_per_hundred INT,
+people_fully_vaccinated_per_hundred INT,
+total_boosters_per_hundred INT,
+new_vaccinations_smoothed_per_million INT,
+new_people_vaccinated_smoothed INT,
+new_people_vaccinated_smoothed_per_hundred INT,
+stringency_index INT,
+population_density INT,
+median_age INT,
+aged_65_older INT,
+aged_70_older INT,
+gdp_per_capita INT,
+extreme_poverty INT,
+cardiovasc_death_rate INT,
+diabetes_prevalence INT,
+female_smokers INT,
+male_smokers INT,
+handwashing_facilities INT,
+hospital_beds_per_thousand INT,
+life_expectancy INT,
+human_development_index INT,
+excess_mortality_cumulative_absolute INT,
+excess_mortality_cumulative INT,
+excess_mortality INT,
+excess_mortality_cumulative_per_million INT
+);
+
+--To view CovidVaccination table
+SELECT * 
+FROM CovidVaccinations;
+
+/*
+Change Data Type. Data type was change to FLOAT for most columns created as INTEGERS,
+*/
+
+ALTER TABLE CovidVaccinations
+ALTER COLUMN  stringency_index TYPE FLOAT;
+
+ALTER TABLE CovidVaccinations
+ALTER COLUMN stringency_index TYPE numeric USING NULLIF(stringency_index, '')::numeric;
+
+--Create CovidDeath Table
+CREATE TABLE CovidDeaths(
+iso_code VARCHAR (10),
+continent CHAR (50),
+locations CHAR (50),
+dates DATE,
+population INT,
+total_cases INT,
+new_cases INT,
+new_cases_smoothed FLOAT,
+total_deaths INT,
+new_deaths INT,
+new_deaths_smoothed FLOAT,
+total_cases_per_million FLOAT,
+new_cases_per_million FLOAT,
+new_cases_smoothed_per_million FLOAT,
+total_deaths_per_million FLOAT,
+new_deaths_per_million FLOAT,
+new_deaths_smoothed_per_million FLOAT,
+reproduction_rate FLOAT,
+icu_patients INT,
+icu_patients_per_million FLOAT,
+hosp_patients INT,
+hosp_patients_per_million FLOAT,
+weekly_icu_admissions INT,
+weekly_icu_admissions_per_million FLOAT,	
+weekly_hosp_admissions INT,
+weekly_hosp_admissions_per_million FLOAT);
+
+ 
+--To View CovidDeaths Table
+
+SELECT *
+FROM CovidDeaths; 
+
+-- Changing population Column TYPE to BIGINT from INT.
+
+ALTER TABLE CovidDeaths
+ALTER COLUMN population TYPE BIGINT;
+
+--Select data that we are going to use
+SELECT locations,dates,total_cases,new_cases,total_deaths,population
+FROM CovidDeaths
+ORDER BY 1,2;
+
+-- Looking at Total cases Vs Total Deaths
+--Shows the likelyhood of dying if you contract covid in your country
+---(I CASTED because the two columns are integers and divsion was returning zero. CASTING to Float solved this)
+SELECT locations,dates,total_cases,total_deaths,(CAST(total_deaths AS FLOAT)/total_cases)*100 AS DeathPercentage
+FROM CovidDeaths
+WHERE locations like '%Nigeria%'
+ORDER BY 1,2;
+
+--Looking at the total Cases vs the Population
+--Shows what population of Nigerians got covid
+SELECT locations,dates,population,total_cases,(CAST(total_cases AS FLOAT)/population)*100 AS CasesPercentage
+FROM CovidDeaths
+WHERE locations like '%Nigeria%'
+ORDER BY 1,2;
+
+--Looking at countries with highest infection rate compared to population
+SELECT locations,population,MAX(total_cases)AS HigestInfectionCount,MAX((CAST(total_cases AS FLOAT)/population))*100 AS InfectedPercentage
+FROM CovidDeaths
+GROUP BY 1,2
+ORDER BY InfectedPercentage desc;
+
+--Showing Countries with Highest Death Counts per population
+
+SELECT locations,MAX(total_deaths)AS TotalDeathCount
+FROM CovidDeaths
+WHERE continent IS NOT NULL 
+AND total_deaths IS NOT NULL --To exclude all NULL values
+GROUP BY 1
+ORDER BY TotalDeathCount desc;
+
+--BY CONTINENT
+--Showing continents with the highest death count per population
+SELECT continent,MAX(total_deaths)AS TotalDeathCount
+FROM CovidDeaths
+WHERE continent IS NOT NULL 
+AND total_deaths IS NOT NULL --To exclude all NULL values
+GROUP BY 1
+ORDER BY TotalDeathCount desc;
+
+
+--GLOBAL NUMBERS
+
+SELECT dates,SUM(new_cases) AS TotalCases, SUM(new_deaths) AS TotalDeaths,(SUM(CAST(new_deaths AS Float))/SUM(new_cases)*100) AS DeathPercentage
+FROM CovidDeaths
+--WHERE locations like '%Nigeria%'
+WHERE continent IS NOT NULL
+GROUP BY dates
+ORDER BY 1,2;
+
+SELECT SUM(new_cases) AS TotalCases, SUM(new_deaths) AS TotalDeaths,(SUM(CAST(new_deaths AS Float))/SUM(new_cases)*100) AS DeathPercentage
+FROM CovidDeaths
+--WHERE locations like '%Nigeria%'
+WHERE continent IS NOT NULL
+--GROUP BY dates
+ORDER BY 1,2;
+
+--Looking at total Population Vs Vaccination
+
+SELECT CovidDeaths.continent,CovidDeaths.locations,
+	CovidDeaths.dates,CovidDeaths.population,
+	CovidVaccinations.new_vaccinations,
+	SUM(new_vaccinations) OVER(PARTITION BY CovidDeaths.locations 
+	ORDER BY CovidDeaths.locations,CovidDeaths.dates) AS RollingPeopleVacinnation
+FROM CovidDeaths
+JOIN CovidVaccinations
+	ON CovidDeaths.locations=CovidVaccinations.location
+	AND CovidDeaths.dates = CovidVaccinations.date
+WHERE CovidDeaths.continent IS NOT NULL	
+ORDER BY 1,2,3;
+
+--Introducing  CTE (Common Table Expression)
+
+WITH PopVaccine (continent, locations, dates, population, new_vaccinations, RollingPeopleVacinnation)
+AS
+(
+SELECT CovidDeaths.continent,CovidDeaths.locations,
+	CovidDeaths.dates,CovidDeaths.population,
+	CovidVaccinations.new_vaccinations,
+	SUM(new_vaccinations) OVER(PARTITION BY CovidDeaths.locations 
+	ORDER BY CovidDeaths.locations,CovidDeaths.dates) AS RollingPeopleVacinnation
+--,(RollingPeopleVacinnation/CovidDeaths.population)*100
+FROM CovidDeaths
+JOIN CovidVaccinations
+	ON CovidDeaths.locations=CovidVaccinations.location
+	AND CovidDeaths.dates = CovidVaccinations.date
+WHERE CovidDeaths.continent IS NOT NULL	
+)
+SELECT *,(RollingPeopleVacinnation/population)*100
+FROM PopVaccine;
+
+
+---Using TEMP TABLE
+
+CREATE TEMP TABLE PercentPopVac
+(
+Continent VARCHAR(255),
+Locations VARCHAR(255),
+Dates DATE,
+population BIGINT,
+new_vaccinations BIGINT,
+RollingPeopleVacinnation FLOAT
+); 	
+
+INSERT INTO PercentPopVac
+
+SELECT CovidDeaths.continent,CovidDeaths.locations,
+	CovidDeaths.dates,CovidDeaths.population,
+	CovidVaccinations.new_vaccinations,
+	SUM(new_vaccinations) OVER(PARTITION BY CovidDeaths.locations 
+	ORDER BY CovidDeaths.locations,CovidDeaths.dates) AS RollingPeopleVacinnation
+--,(RollingPeopleVacinnation/CovidDeaths.population)*100
+FROM CovidDeaths
+JOIN CovidVaccinations
+	ON CovidDeaths.locations=CovidVaccinations.location
+	AND CovidDeaths.dates = CovidVaccinations.date
+WHERE CovidDeaths.continent IS NOT NULL;	
+
+SELECT *,(RollingPeopleVacinnation/population)*100
+FROM PercentPopVac;
+
+--To make alterations, first drop the existing table
+
+DROP TABLE IF EXISTS PercentPopVac;
+
+CREATE TEMP TABLE PercentPopVac
+(
+Continent VARCHAR(255),
+Locations VARCHAR(255),
+Dates DATE,
+population BIGINT,
+new_vaccinations BIGINT,
+RollingPeopleVacinnation FLOAT
+); 	
+
+INSERT INTO PercentPopVac
+
+SELECT CovidDeaths.continent,CovidDeaths.locations,
+	CovidDeaths.dates,CovidDeaths.population,
+	CovidVaccinations.new_vaccinations,
+	SUM(new_vaccinations) OVER(PARTITION BY CovidDeaths.locations 
+	ORDER BY CovidDeaths.locations,CovidDeaths.dates) AS RollingPeopleVacinnation
+--,(RollingPeopleVacinnation/CovidDeaths.population)*100
+FROM CovidDeaths
+JOIN CovidVaccinations
+	ON CovidDeaths.locations=CovidVaccinations.location
+	AND CovidDeaths.dates = CovidVaccinations.date;
+--WHERE CovidDeaths.continent IS NOT NULL
+
+SELECT *,(RollingPeopleVacinnation/population)*100 AS VacPop
+FROM PercentPopVac;
+
+
+--Create View to store data for visualization
+
+CREATE VIEW PercentPopVac AS 
+
+SELECT CovidDeaths.continent,CovidDeaths.locations,
+	CovidDeaths.dates,CovidDeaths.population,
+	CovidVaccinations.new_vaccinations,
+	SUM(new_vaccinations) OVER(PARTITION BY CovidDeaths.locations 
+	ORDER BY CovidDeaths.locations,CovidDeaths.dates) AS RollingPeopleVacinnation
+--,(RollingPeopleVacinnation/CovidDeaths.population)*100
+FROM CovidDeaths
+JOIN CovidVaccinations
+	ON CovidDeaths.locations=CovidVaccinations.location
+	AND CovidDeaths.dates = CovidVaccinations.date;
+	
+	
+	--To see view created
+	
+	SELECT *
+	FROM PercentPopVac;
